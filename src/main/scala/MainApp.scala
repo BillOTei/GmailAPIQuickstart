@@ -12,6 +12,7 @@ import com.google.api.services.gmail.{Gmail, GmailScopes}
 import zio.*
 
 import java.io.{FileInputStream, IOException, InputStreamReader}
+import scala.io.Source
 import scala.jdk.CollectionConverters.*
 
 object MainApp extends ZIOAppDefault with Messaging {
@@ -32,19 +33,41 @@ object MainApp extends ZIOAppDefault with Messaging {
   private val SCOPES = List(GmailScopes.GMAIL_SEND)
   private val CREDENTIALS_FILE_PATH = "/credentials.json"
 
-  def run: ZIO[Any, Throwable, Unit] = for {
+  def run: ZIO[Any, Throwable, Unit] =
+    for {
+      _ <- Console.print("Please enter your sender gmail account: ")
+      sender <- Console.readLine
+      source <- ZIO.attemptBlockingIO(Source.fromFile(getClass.getResource("/fr_booking_emails.db").getFile))
+      recipientsStr <- ZIO.attemptBlockingIO(source.mkString)
+      recipientGroups = recipientsStr
+        .split("\n")
+        .filterNot(s => s.head == '#')
+        .grouped(100)
+        .toList
+      _ <- ZIO.attemptBlockingIO(source.close())
       httpTransport <- ZIO.attemptBlockingIO(GoogleNetHttpTransport.newTrustedTransport())
       credentials <- getCredentials(httpTransport)
       gmailService <- ZIO.attemptUnsafe(_ => new Gmail.Builder(httpTransport, JSON_FACTORY, credentials).setApplicationName(APPLICATION_NAME).build())
-      email <- createEmail(
-        List("ateilhet@gmail.com", "drine.piquet@gmail.com", "ride-180@libertysurf.fr"),
-        "drine.piquet@gmail.com",
-        "Much luv",
-        "coucou chouquette doll <3 depuis le bureau de bill'o"
+      emails <- ZIO.collectAll(
+        recipientGroups.map { g =>
+          createEmail(
+            g.toList,
+            sender,
+            "Concert punk rock Octobre 22",
+            s"""Hello,
+        je représente le groupe de punk rock corrézien Breaking Tag (https://www.facebook.com/breakingtagband)\n
+        Ils seront en tournée en cette fin d'année pour promouvoir la sortie de leur nouvel EP Sticks and Stones (https://breakingtag.bandcamp.com/album/sticks-and-stones)\n
+        À la recherche d'une date de concert les w.e. du 14/15 et 21/22 Octobre 2022.\n
+        N'hésitez pas à revenir vers moi si l'organisation d'un concert dans ces créneaux voire même les mois  d'après vous intéresserait.\n
+        Merci d'avance et à très vite.\n\n
+        Alex (0603909271) pour Breaking Tag"""
+          )
+        }
       )
-      message <- createMessage(email)
-      response <- ZIO.attemptBlockingIO(gmailService.users().messages().send("me", message).execute())
-      _ <- Console.print(response.toPrettyString)
+      messages <- ZIO.collectAll(emails.map(email => createMessage(email)))
+      responses <- ZIO.collectAll(messages.map(message => ZIO.attemptBlockingIO(gmailService.users().messages().send("me", message).execute())))
+      _ <- ZIO.collectAll(responses.map(response => Console.print(response.toPrettyString)))
+      _ <- Console.print(s"Attempted to send ${recipientGroups.flatten.length} emails")
     } yield ()
 
   private def getCredentials(httpTransport: NetHttpTransport): ZIO[Any, Throwable, Credential] =

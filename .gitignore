@@ -32,3 +32,4 @@ conf/version.conf
 .project
 
 /.bsp/
+/src/main/resources/fr_booking_emails.db
