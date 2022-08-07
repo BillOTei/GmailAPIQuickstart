@@ -14,7 +14,7 @@ import zio.*
 import java.io.{FileInputStream, IOException, InputStreamReader}
 import scala.jdk.CollectionConverters.*
 
-object MainApp extends ZIOAppDefault {
+object MainApp extends ZIOAppDefault with Messaging {
 
   /** Application name. */
   private val APPLICATION_NAME = "Booking Emailer"
@@ -29,8 +29,32 @@ object MainApp extends ZIOAppDefault {
     * Global instance of the scopes required by this quickstart.
     * If modifying these scopes, delete your previously saved tokens/folder.
     */
-  private val SCOPES = List(GmailScopes.GMAIL_LABELS)
+  private val SCOPES = List(GmailScopes.GMAIL_SEND)
   private val CREDENTIALS_FILE_PATH = "/credentials.json"
+
+  def run: ZIO[Any, Throwable, Unit] = for {
+      httpTransport <- ZIO.attemptBlockingIO(GoogleNetHttpTransport.newTrustedTransport())
+      credentials <- getCredentials(httpTransport)
+      gmailService <- ZIO.attemptUnsafe(_ => new Gmail.Builder(httpTransport, JSON_FACTORY, credentials).setApplicationName(APPLICATION_NAME).build())
+      email <- createEmail(
+        List("ateilhet@gmail.com", "drine.piquet@gmail.com", "ride-180@libertysurf.fr"),
+        "drine.piquet@gmail.com",
+        "Much luv",
+        "coucou chouquette doll <3 depuis le bureau de bill'o"
+      )
+      message <- createMessage(email)
+      response <- ZIO.attemptBlockingIO(gmailService.users().messages().send("me", message).execute())
+      _ <- Console.print(response.toPrettyString)
+    } yield ()
+
+  private def getCredentials(httpTransport: NetHttpTransport): ZIO[Any, Throwable, Credential] =
+    for {
+      stream <- ZIO.attemptBlockingIO(getClass.getResourceAsStream(CREDENTIALS_FILE_PATH))
+      clientSecrets <- ZIO.attemptBlockingIO(GoogleClientSecrets.load(JSON_FACTORY, new InputStreamReader(stream)))
+      flow <- getFlow(httpTransport, clientSecrets)
+      receiver <- ZIO.attemptUnsafe(_ => new LocalServerReceiver.Builder().setPort(8888).build)
+      credentials <- ZIO.attemptBlockingIO(new AuthorizationCodeInstalledApp(flow, receiver).authorize("user"))
+    } yield credentials
 
   private def getFlow(httpTransport: NetHttpTransport, clientSecrets: GoogleClientSecrets): ZIO[Any, Throwable, GoogleAuthorizationCodeFlow] =
     for {
@@ -43,27 +67,4 @@ object MainApp extends ZIOAppDefault {
           .build()
       )
     } yield flow
-
-  private def getCredentials(httpTransport: NetHttpTransport): ZIO[Any, Throwable, Credential] =
-    for {
-      stream <- ZIO.attemptBlockingIO(getClass.getResourceAsStream(CREDENTIALS_FILE_PATH))
-      clientSecrets <- ZIO.attemptBlockingIO(GoogleClientSecrets.load(JSON_FACTORY, new InputStreamReader(stream)))
-      flow <- getFlow(httpTransport, clientSecrets)
-      receiver <- ZIO.attemptUnsafe(_ => new LocalServerReceiver.Builder().setPort(8888).build)
-      credentials <- ZIO.attemptBlockingIO(new AuthorizationCodeInstalledApp(flow, receiver).authorize("user"))
-    } yield credentials
-
-  def run: ZIO[Any, Throwable, Unit] = {
-    // Print the labels in the user's account
-    val user = "me"
-
-    for {
-      httpTransport <- ZIO.attemptBlockingIO(GoogleNetHttpTransport.newTrustedTransport())
-      credentials <- getCredentials(httpTransport)
-      gmailService <- ZIO.attemptUnsafe(_ => new Gmail.Builder(httpTransport, JSON_FACTORY, credentials).setApplicationName(APPLICATION_NAME).build())
-      listResponse <- ZIO.attemptBlockingIO(gmailService.users.labels.list(user).execute)
-      labels = listResponse.getLabels.asScala.toList
-      _ <- Console.print(labels)
-    } yield ()
-  }
 }
