@@ -53,14 +53,8 @@ object MainApp extends ZIOAppDefault with Messaging {
           createEmail(
             g.toList,
             sender,
-            "Concert punk rock Octobre 22",
-            s"""Hello,
-        je représente le groupe de punk rock corrézien Breaking Tag (https://www.facebook.com/breakingtagband)\n
-        Ils seront en tournée en cette fin d'année pour promouvoir la sortie de leur nouvel EP Sticks and Stones (https://breakingtag.bandcamp.com/album/sticks-and-stones)\n
-        À la recherche d'une date de concert les w.e. du 14/15 et 21/22 Octobre 2022.\n
-        N'hésitez pas à revenir vers moi si l'organisation d'un concert dans ces créneaux voire même les mois  d'après vous intéresserait.\n
-        Merci d'avance et à très vite.\n\n
-        Alex (0603909271) pour Breaking Tag"""
+            "todo parametrize title",
+            s"""todo parametrize that"""
           )
         }
       )
